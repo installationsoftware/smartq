@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartQ Status</title>
+    <link rel="icon" type="image/png" href="logo.png">
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        #splash-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: white; z-index: 9999;
+            display: flex; justify-content: center; align-items: center; flex-direction: column;
+            transition: opacity 0.5s ease-out;
+        }
+        .splash-logo { width: 100px; animation: pulse 1.5s infinite ease-in-out; }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
+    </style>
+</head>
+<body>
+
+    <div id="splash-screen">
+        <img src="logo.png" class="splash-logo" onerror="this.src='https://cdn-icons-png.flaticon.com/512/3135/3135715.png'">
+        <p style="margin-top:20px; font-weight:bold; color:#666;">Loading Queue...</p>
+    </div>
+
+    <div id="joinScreen" class="screen">
+        <div class="logo-area" style="text-align: center; margin-top: 40px; margin-bottom: 20px;">
+            <img src="logo.png" style="width: 80px; margin-bottom: 10px;" onerror="this.style.display='none'">
+            <h2 id="orgNameTitle" style="color: var(--primary); margin: 0;">Loading...</h2>
+            <p id="debugShopId" style="color: #999; font-size: 0.7rem; margin-top: 5px;">...</p> 
+            <p style="color: #666; margin-top: 10px;">Join the Queue</p>
+        </div>
+        
+        <div class="card" style="padding: 30px; border-radius: 20px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.05);">
+            <input type="text" id="custName" class="input-field" placeholder="Enter Your Name" style="width: 100%; padding: 15px; margin-bottom: 20px; border: 1px solid #ddd; border-radius: 12px;">
+            <button id="joinBtn" class="btn btn-control btn-next" onclick="joinQueue()" style="width:100%; padding: 15px; border-radius: 12px; border: none; background: var(--primary); color: white; font-weight: bold; font-size: 1rem;">
+                Get Token
+            </button>
+        </div>
+    </div>
+
+    <div id="statusScreen" class="screen hidden">
+        <div class="dash-header" style="justify-content: center; padding: 20px 0;">
+            <span id="bizNameDisplay" style="font-weight:bold; color:var(--primary); font-size: 1.2rem;">SmartQ</span>
+        </div>
+
+        <div class="card token-display" style="border: 2px solid var(--primary); text-align: center; padding: 30px; border-radius: 25px; background: white; margin-bottom: 20px;">
+            <div class="current-label" style="color: #999; font-weight: 600; font-size: 0.9rem; letter-spacing: 1px;">NOW SERVING</div>
+            <div id="servingToken" class="big-token" style="font-size: 4.5rem; font-weight: 800; color: var(--text-dark); line-height: 1;">--</div>
+        </div>
+
+        <div class="card" style="background: var(--primary); color: white; text-align: center; padding: 30px; border-radius: 25px; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(91, 71, 251, 0.3);">
+            <div class="current-label" style="color: rgba(255,255,255,0.8); font-size: 0.9rem;">YOUR TOKEN</div>
+            <div id="myToken" style="font-size: 3.5rem; font-weight: 800; margin: 10px 0;">--</div>
+            <div id="statusMsg" style="background:white; color:var(--primary); padding:8px 20px; border-radius:20px; font-weight:bold; display:inline-block; font-size: 0.9rem;">Waiting</div>
+        </div>
+
+        <div class="grid-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+            <div class="cat-card" style="padding: 20px; background: white; border-radius: 20px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.03);">
+                <i class="fas fa-user-friends" style="color:#ccc; font-size: 1.2rem; margin-bottom: 5px;"></i>
+                <div id="peopleAhead" style="font-size:1.5rem; font-weight:800; color: var(--text-dark);">0</div>
+                <div style="font-size: 0.8rem; color: #999;">People Ahead</div>
+            </div>
+            <div class="cat-card" style="padding: 20px; background: white; border-radius: 20px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.03);">
+                <i class="fas fa-hourglass-half" style="color:#ccc; font-size: 1.2rem; margin-bottom: 5px;"></i>
+                <div id="waitTime" style="font-size:1.5rem; font-weight:800; color: var(--text-dark);">0m</div>
+                <div style="font-size: 0.8rem; color: #999;">Est. Wait</div>
+            </div>
+        </div>
+        
+        <button onclick="leaveQueue()" style="width: 100%; padding: 15px; background:none; border:none; color:#999; text-decoration:underline; cursor: pointer;">Leave Queue</button>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, get, set, onValue, runTransaction, update } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        const firebaseConfig = { apiKey: "AIzaSyCYMTf26H1JRlA1QRJjzzlBmnQozLBzf0U", authDomain: "smartq-app-7807b.firebaseapp.com", projectId: "smartq-app-7807b", databaseURL: "https://smartq-app-7807b-default-rtdb.firebaseio.com/" };
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        
+        let adminId = null;
+        let myToken = null;
+        let lastAnnounced = 0; 
+
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const splash = document.getElementById('splash-screen');
+                splash.style.opacity = '0';
+                setTimeout(() => splash.remove(), 500); 
+            }, 1500);
+        });
+
+        const urlParams = new URLSearchParams(window.location.search);
+        adminId = urlParams.get('q');
+
+        if(adminId) {
+            // SHOW DEBUG ID: Helps verify you are on the right shop
+            document.getElementById('debugShopId').innerText = "Shop ID: ..." + adminId.slice(-6);
+
+            const savedToken = localStorage.getItem(`smartq_token_${adminId}`);
+            if(savedToken) {
+                myToken = parseInt(savedToken);
+                document.getElementById('joinScreen').classList.add('hidden');
+                document.getElementById('statusScreen').classList.remove('hidden');
+                document.getElementById('myToken').innerText = "Loading...";
+                startListening();
+            }
+            // Load Shop Name
+            get(ref(db, 'admins/' + adminId)).then(snap => {
+                if(snap.exists()) {
+                    const data = snap.val();
+                    document.getElementById('orgNameTitle').innerText = data.name || "Join Queue";
+                    document.getElementById('bizNameDisplay').innerText = data.name;
+                    if(myToken) document.getElementById('myToken').innerText = "#" + myToken;
+                } else {
+                    document.getElementById('orgNameTitle').innerText = "Shop Not Found";
+                    alert("This shop has not been set up yet. Please ask the admin to open their dashboard.");
+                }
+            });
+        } else {
+            alert("No Queue ID found!");
+            window.location.href = "index.html";
+        }
+
+        function unlockAudio() {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance('');
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        window.joinQueue = async () => {
+            unlockAudio();
+            if(!adminId) return alert("System Error");
+            const name = document.getElementById('custName').value;
+            if(!name) return alert("Please enter your name");
+            
+            const btn = document.getElementById('joinBtn');
+            btn.innerText = "Processing..."; btn.disabled = true;
+
+            try {
+                // Check if shop open
+                const snapshot = await get(ref(db, `admins/${adminId}`));
+                if (!snapshot.exists()) return alert("Shop does not exist!");
+
+                const data = snapshot.val();
+                if (data && data.isOpen === false) {
+                    btn.innerText = "Get Token"; btn.disabled = false;
+                    return alert("Counter is CLOSED.");
+                }
+
+                const lastTokenRef = ref(db, `admins/${adminId}/lastToken`);
+                await runTransaction(lastTokenRef, (currentVal) => { return (currentVal || 0) + 1; }).then((result) => {
+                    if(result.committed) {
+                        myToken = result.snapshot.val();
+                        localStorage.setItem(`smartq_token_${adminId}`, myToken);
+                        update(ref(db, `admins/${adminId}/tokens/${myToken}`), { name: name });
+                        showStatusScreen();
+                        startListening();
+                    }
+                });
+            } catch (error) { 
+                alert("Error: " + error.message); 
+                btn.innerText = "Get Token"; btn.disabled = false; 
+            }
+        };
+
+        function showStatusScreen() {
+            document.getElementById('joinScreen').classList.add('hidden');
+            document.getElementById('statusScreen').classList.remove('hidden');
+            document.getElementById('myToken').innerText = "#" + myToken;
+            
+            const visited = JSON.parse(localStorage.getItem('smartq_visited_places') || "[]");
+            const newEntry = { id: adminId, name: document.getElementById('bizNameDisplay').innerText, date: new Date().toLocaleDateString() };
+            // Avoid duplicates
+            const filtered = visited.filter(v => v.id !== adminId);
+            filtered.push(newEntry);
+            localStorage.setItem('smartq_visited_places', JSON.stringify(filtered));
+        }
+
+        function startListening() {
+            onValue(ref(db, `admins/${adminId}`), (snap) => {
+                const data = snap.val();
+                if(!data) return;
+
+                if (data.lastToken < myToken) {
+                    alert("⚠️ Queue was reset by the shop.");
+                    leaveQueue(); 
+                    return;
+                }
+
+                const serving = data.current;
+                
+                if(data.isPaused) {
+                    document.getElementById('servingToken').innerText = "PAUSED";
+                    document.getElementById('servingToken').style.color = "#ef4444"; 
+                } else {
+                    document.getElementById('servingToken').innerText = "#" + serving;
+                    document.getElementById('servingToken').style.color = "var(--text-dark)";
+                }
+
+                const msgBox = document.getElementById('statusMsg');
+                if (serving == myToken) {
+                    msgBox.innerText = "IT'S YOUR TURN!";
+                    msgBox.style.background = "#10b981"; 
+                    msgBox.style.color = "white";
+                    
+                    if(lastAnnounced != serving) {
+                        speakText("Token " + myToken + ", it is your turn.");
+                        lastAnnounced = serving;
+                        if(navigator.vibrate) navigator.vibrate([500, 200, 500]);
+                    }
+                } else if (data.skipped && data.skipped[myToken]) {
+                    msgBox.innerText = "SKIPPED / MISSED";
+                    msgBox.style.background = "#ef4444"; 
+                    msgBox.style.color = "white";
+                } else if (serving > myToken) {
+                    msgBox.innerText = "Completed";
+                    msgBox.style.background = "#e5e7eb";
+                    msgBox.style.color = "#666";
+                } else {
+                    msgBox.innerText = "Waiting...";
+                    msgBox.style.background = "white";
+                    msgBox.style.color = "var(--primary)";
+                }
+
+                let ahead = myToken - serving;
+                if(ahead < 0) ahead = 0;
+                document.getElementById('peopleAhead').innerText = ahead;
+                document.getElementById('waitTime').innerText = (ahead * (data.avgTime || 5)) + "m";
+            });
+        }
+
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        window.leaveQueue = () => {
+            localStorage.removeItem(`smartq_token_${adminId}`);
+            window.location.href = "index.html"; 
+        };
+    </script>
+</body>
+</html>
